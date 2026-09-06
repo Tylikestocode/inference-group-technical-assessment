@@ -1,1 +1,1 @@
-# inference-group-technical-assessment
+# Inference Group Technical Assessment
