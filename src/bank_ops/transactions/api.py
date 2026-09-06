@@ -6,6 +6,7 @@ from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 
 from bank_ops.transactions.models import (
+    HealthResponse,
     TransactionId,
     TransactionLookupRequest,
     TransactionNotFound,
@@ -22,6 +23,12 @@ def create_app(repository: TransactionRepository | None = None) -> FastAPI:
 
     transaction_repository = repository or JsonTransactionRepository()
     app = FastAPI(title="Transaction Lookup API", version="0.1.0")
+
+    @app.get("/health", response_model=HealthResponse)
+    def get_health() -> HealthResponse:
+        """Report that the initialized API process is ready to accept requests."""
+
+        return HealthResponse()
 
     @app.get(
         "/transactions/{transaction_id}",

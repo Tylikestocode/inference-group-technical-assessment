@@ -5,6 +5,7 @@ import pytest
 
 from bank_ops.transactions.api import create_app
 from bank_ops.transactions.models import (
+    HealthResponse,
     TransactionLookupRequest,
     TransactionLookupResult,
     TransactionResponse,
@@ -26,6 +27,14 @@ async def api_client() -> AsyncIterator[httpx.AsyncClient]:
         transport=transport, base_url="http://testserver"
     ) as client:
         yield client
+
+
+async def test_health_endpoint_reports_ready(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert HealthResponse.model_validate(response.json()) == HealthResponse()
 
 
 async def test_get_txn_0212_returns_expected_transaction(
@@ -116,3 +125,8 @@ async def test_openapi_documents_success_and_not_found_contracts(
     ]["get"]
 
     assert set(operation["responses"]) >= {"200", "404"}
+
+    health_operation = (await api_client.get("/openapi.json")).json()["paths"][
+        "/health"
+    ]["get"]
+    assert "200" in health_operation["responses"]

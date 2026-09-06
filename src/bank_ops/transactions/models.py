@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import StrEnum
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Literal
 
 from pydantic import (
     AwareDatetime,
@@ -54,6 +54,7 @@ class ErrorCode(StrEnum):
     """Stable error codes exposed by the transaction contract."""
 
     TRANSACTION_NOT_FOUND = "transaction_not_found"
+    TRANSACTION_SERVICE_UNAVAILABLE = "transaction_service_unavailable"
 
 
 class TransactionLookupRequest(ContractModel):
@@ -99,4 +100,23 @@ class TransactionNotFound(ContractModel):
     message: Literal["Transaction was not found."] = "Transaction was not found."
 
 
-TransactionLookupResult: TypeAlias = TransactionResponse | TransactionNotFound
+class TransactionServiceUnavailable(ContractModel):
+    """Safe result returned when the transaction API cannot answer reliably."""
+
+    error: Literal[ErrorCode.TRANSACTION_SERVICE_UNAVAILABLE] = (
+        ErrorCode.TRANSACTION_SERVICE_UNAVAILABLE
+    )
+    transaction_id: TransactionId
+    message: Literal["Transaction service is unavailable."] = (
+        "Transaction service is unavailable."
+    )
+
+
+class HealthResponse(ContractModel):
+    """Lightweight service health contract used by Docker Compose."""
+
+    status: Literal["ok"] = "ok"
+
+
+type TransactionLookupResult = TransactionResponse | TransactionNotFound
+type TransactionClientResult = TransactionLookupResult | TransactionServiceUnavailable

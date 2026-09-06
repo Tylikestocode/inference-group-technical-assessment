@@ -11,6 +11,7 @@ def test_settings_have_local_development_defaults(
 ) -> None:
     for name in (
         "BANK_OPS_TRANSACTION_API_URL",
+        "BANK_OPS_TRANSACTION_TIMEOUT_SECONDS",
         "BANK_OPS_OLLAMA_URL",
         "BANK_OPS_GENERATION_MODEL",
         "BANK_OPS_GENERATION_TIMEOUT_SECONDS",
@@ -25,6 +26,7 @@ def test_settings_have_local_development_defaults(
     settings = Settings(_env_file=None)
 
     assert str(settings.transaction_api_url) == "http://localhost:8000/"
+    assert settings.transaction_timeout_seconds == 5
     assert str(settings.ollama_url) == "http://localhost:11434/"
     assert settings.generation_model == "qwen3.5:9b"
     assert settings.generation_timeout_seconds == 120
@@ -37,6 +39,7 @@ def test_settings_have_local_development_defaults(
 
 def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BANK_OPS_TRANSACTION_API_URL", "http://transactions:8000")
+    monkeypatch.setenv("BANK_OPS_TRANSACTION_TIMEOUT_SECONDS", "3.5")
     monkeypatch.setenv("BANK_OPS_OLLAMA_URL", "http://ollama:11434")
     monkeypatch.setenv("BANK_OPS_GENERATION_MODEL", "local-generation-model")
     monkeypatch.setenv("BANK_OPS_GENERATION_TIMEOUT_SECONDS", "45.5")
@@ -49,6 +52,7 @@ def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) ->
     settings = Settings(_env_file=None)
 
     assert str(settings.transaction_api_url) == "http://transactions:8000/"
+    assert settings.transaction_timeout_seconds == 3.5
     assert str(settings.ollama_url) == "http://ollama:11434/"
     assert settings.generation_model == "local-generation-model"
     assert settings.generation_timeout_seconds == 45.5
@@ -63,6 +67,7 @@ def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) ->
     ("name", "value"),
     [
         ("BANK_OPS_TRANSACTION_API_URL", "not-a-url"),
+        ("BANK_OPS_TRANSACTION_TIMEOUT_SECONDS", "0"),
         ("BANK_OPS_OLLAMA_URL", "ftp://ollama.example"),
         ("BANK_OPS_GENERATION_MODEL", ""),
         ("BANK_OPS_GENERATION_TIMEOUT_SECONDS", "0"),

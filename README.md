@@ -19,7 +19,8 @@ or another live service.
 
 ## Run the transaction API
 
-Start the read-only synthetic transaction service from the repository root:
+Start the read-only synthetic transaction service directly from the repository
+root:
 
 ```sh
 uv run uvicorn bank_ops.transactions.api:app --host 127.0.0.1 --port 8000
@@ -33,6 +34,29 @@ curl --fail-with-body http://127.0.0.1:8000/transactions/TXN-9999
 ```
 
 The service exposes no endpoints for creating or changing transactions.
+
+To run the API through Docker Compose instead, build it and wait for its health
+check to pass:
+
+```sh
+docker compose up -d --build --wait api
+docker compose ps api
+curl --fail-with-body http://127.0.0.1:8000/health
+```
+
+Docker Compose reports the service as `healthy` after `/health` responds. A
+controlled unavailable-service result can be demonstrated without changing
+source code by stopping only the API and calling the application-owned client:
+
+```sh
+docker compose stop api
+uv run python -c 'from bank_ops.transactions import HttpTransactionClient, TransactionLookupRequest; result = HttpTransactionClient("http://127.0.0.1:8000").get(TransactionLookupRequest(transaction_id="TXN-0212")); print(result.model_dump_json())'
+docker compose start --wait api
+```
+
+The stopped-service call prints a typed
+`transaction_service_unavailable` result. The client timeout defaults to five
+seconds and can be changed with `BANK_OPS_TRANSACTION_TIMEOUT_SECONDS`.
 
 ## Command-line interface
 

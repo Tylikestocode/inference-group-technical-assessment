@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     )
 
     transaction_api_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000")
+    transaction_timeout_seconds: TimeoutSeconds = 5
     ollama_url: AnyHttpUrl = AnyHttpUrl("http://localhost:11434")
     generation_model: ModelName = "qwen3.5:9b"
     generation_timeout_seconds: TimeoutSeconds = 120
