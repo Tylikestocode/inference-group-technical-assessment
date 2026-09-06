@@ -1,6 +1,6 @@
 # AI Operations Agent - Business Overview
 
-The supporting technical choices are recorded in the [Architecture Decision Records](adrs/README.md).
+The supporting technical choices are recorded in the [Architecture Decision Records](adrs/README.md), and the delivery work is mapped in the [Implementation Task Map](tasks/README.md).
 
 ## Purpose
 
