@@ -77,6 +77,23 @@ reason returns the Beneficiary Verification procedure first, run:
 RUN_RETRIEVAL_INTEGRATION=1 uv run pytest -m retrieval_integration
 ```
 
+## Investigation workflow integration
+
+The default test suite exercises the complete controlled workflow with local
+stand-ins. To run the same `TXN-0212` path through the transaction API, FAISS
+index, and Ollama adapters, start the services, build the index, and enable the
+opt-in integration test:
+
+```sh
+uv run uvicorn bank_ops.transactions.api:app
+./scripts/setup-model.sh
+uv run bank-ops build-index
+RUN_AGENT_INTEGRATION=1 uv run pytest tests/test_workflow_integration.py
+```
+
+Run the API command in a separate terminal. The workflow returns a validated
+structured response; advisor-facing rendering is added in CLI Task 002.
+
 ## Prerequisites
 
 - Docker Desktop or Docker Engine with Docker Compose v2
