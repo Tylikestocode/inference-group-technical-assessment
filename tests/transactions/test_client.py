@@ -9,6 +9,7 @@ from bank_ops.transactions.models import (
     TransactionLookupRequest,
     TransactionNotFound,
     TransactionResponse,
+    TransactionServiceUnavailable,
 )
 
 
@@ -26,20 +27,29 @@ def transaction_payload() -> dict[str, object]:
 
 
 def test_http_client_returns_typed_transaction_and_uses_get_route() -> None:
+    captured_timeout: dict[str, float] = {}
+
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
         assert request.url == "https://transactions.test/transactions/TXN-0212"
+        captured_timeout.update(request.extensions["timeout"])
         return httpx.Response(200, json=transaction_payload())
 
     transport = httpx.MockTransport(handler)
     with httpx.Client(transport=transport) as http_client:
         client = HttpTransactionClient(
-            "https://transactions.test/", client=http_client
+            "https://transactions.test/", timeout_seconds=2.5, client=http_client
         )
         result = client.get(TransactionLookupRequest(transaction_id="TXN-0212"))
 
     assert isinstance(result, TransactionResponse)
     assert result.amount == Decimal("12500.00")
+    assert captured_timeout == {
+        "connect": 2.5,
+        "read": 2.5,
+        "write": 2.5,
+        "pool": 2.5,
+    }
 
 
 def test_http_client_returns_typed_not_found_without_invented_details() -> None:
@@ -55,9 +65,7 @@ def test_http_client_returns_typed_not_found_without_invented_details() -> None:
 
     transport = httpx.MockTransport(handler)
     with httpx.Client(transport=transport) as http_client:
-        client = HttpTransactionClient(
-            "https://transactions.test", client=http_client
-        )
+        client = HttpTransactionClient("https://transactions.test", client=http_client)
         result = client.get(TransactionLookupRequest(transaction_id="TXN-9999"))
 
     assert result == TransactionNotFound(transaction_id="TXN-9999")
@@ -65,12 +73,41 @@ def test_http_client_returns_typed_not_found_without_invented_details() -> None:
     assert "hold_reason" not in result.model_fields_set
 
 
-def test_http_client_raises_for_unexpected_http_status() -> None:
-    transport = httpx.MockTransport(lambda request: httpx.Response(500))
+def test_http_client_returns_typed_unavailable_for_server_failure() -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(503))
     with httpx.Client(transport=transport) as http_client:
-        client = HttpTransactionClient(
-            "https://transactions.test", client=http_client
-        )
+        client = HttpTransactionClient("https://transactions.test", client=http_client)
+        result = client.get(TransactionLookupRequest(transaction_id="TXN-0212"))
+
+    assert result == TransactionServiceUnavailable(transaction_id="TXN-0212")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        httpx.ConnectError("connection refused"),
+        httpx.ReadTimeout("request timed out"),
+    ],
+)
+def test_http_client_returns_typed_unavailable_for_transport_failure(
+    failure: httpx.RequestError,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        failure.request = request
+        raise failure
+
+    transport = httpx.MockTransport(handler)
+    with httpx.Client(transport=transport) as http_client:
+        client = HttpTransactionClient("https://transactions.test", client=http_client)
+        result = client.get(TransactionLookupRequest(transaction_id="TXN-0212"))
+
+    assert result == TransactionServiceUnavailable(transaction_id="TXN-0212")
+
+
+def test_http_client_raises_for_unexpected_client_error_status() -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(418))
+    with httpx.Client(transport=transport) as http_client:
+        client = HttpTransactionClient("https://transactions.test", client=http_client)
         with pytest.raises(httpx.HTTPStatusError):
             client.get(TransactionLookupRequest(transaction_id="TXN-0212"))
 
@@ -82,9 +119,7 @@ def test_http_client_rejects_invalid_success_payload() -> None:
         lambda request: httpx.Response(200, json=invalid_payload)
     )
     with httpx.Client(transport=transport) as http_client:
-        client = HttpTransactionClient(
-            "https://transactions.test", client=http_client
-        )
+        client = HttpTransactionClient("https://transactions.test", client=http_client)
         with pytest.raises(ValidationError):
             client.get(TransactionLookupRequest(transaction_id="TXN-0212"))
 

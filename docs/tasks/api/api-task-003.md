@@ -1,6 +1,6 @@
 # API Task 003: Add health checks and safe API failures
 
-- Status: Planned
+- Status: Done
 - Slice: 3 - Safe and demonstrable prototype
 - Size: Small
 - Depends on: API Task 002

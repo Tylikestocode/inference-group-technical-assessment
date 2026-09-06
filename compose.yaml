@@ -1,6 +1,32 @@
 name: ai-operations-agent
 
 services:
+  api:
+    build:
+      context: .
+    command:
+      - uvicorn
+      - bank_ops.transactions.api:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
   ollama:
     image: ollama/ollama:0.33.3
     environment:
