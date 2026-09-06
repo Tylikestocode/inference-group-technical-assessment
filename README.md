@@ -17,6 +17,23 @@ uv run pytest
 The tests use packaged fictional transaction records and do not require Ollama
 or another live service.
 
+## Run the transaction API
+
+Start the read-only synthetic transaction service from the repository root:
+
+```sh
+uv run uvicorn bank_ops.transactions.api:app --host 127.0.0.1 --port 8000
+```
+
+Look up a known or unknown transaction in another terminal:
+
+```sh
+curl --fail-with-body http://127.0.0.1:8000/transactions/TXN-0212
+curl --fail-with-body http://127.0.0.1:8000/transactions/TXN-9999
+```
+
+The service exposes no endpoints for creating or changing transactions.
+
 ## Command-line interface
 
 Show the available commands or submit a transaction question:
