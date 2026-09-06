@@ -1,0 +1,32 @@
+[
+  {
+    "transaction_id": "TXN-0212",
+    "status": "held",
+    "amount": "12500.00",
+    "currency": "ZAR",
+    "risk_level": "medium",
+    "hold_reason": "Beneficiary details do not match the payment instruction.",
+    "channel": "online_banking",
+    "timestamp": "2026-08-21T09:30:00Z"
+  },
+  {
+    "transaction_id": "TXN-0104",
+    "status": "completed",
+    "amount": "250.00",
+    "currency": "ZAR",
+    "risk_level": "low",
+    "hold_reason": null,
+    "channel": "mobile",
+    "timestamp": "2026-08-20T14:05:00Z"
+  },
+  {
+    "transaction_id": "TXN-0348",
+    "status": "held",
+    "amount": "75000.00",
+    "currency": "ZAR",
+    "risk_level": "high",
+    "hold_reason": "Payment requires sanctions screening review.",
+    "channel": "branch",
+    "timestamp": "2026-08-22T11:45:00Z"
+  }
+]

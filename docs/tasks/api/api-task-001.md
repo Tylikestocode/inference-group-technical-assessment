@@ -1,6 +1,6 @@
 # API Task 001: Define the transaction service contract
 
-- Status: Planned
+- Status: Done
 - Slice: 1 - Runnable foundation
 - Size: Small
 - Related ADRs: ADR-001, ADR-010, ADR-013
