@@ -3,6 +3,20 @@
 This repository contains a local AI Operations Agent prototype. The first
 runtime component is Qwen 3.5 9B served by Ollama through Docker Compose.
 
+## Python development
+
+The application uses Python 3.12 and [uv](https://docs.astral.sh/uv/) for
+dependency management. Install the locked development environment and run the
+automated tests from the repository root:
+
+```sh
+uv sync --locked
+uv run pytest
+```
+
+The tests use packaged fictional transaction records and do not require Ollama
+or another live service.
+
 ## Prerequisites
 
 - Docker Desktop or Docker Engine with Docker Compose v2
