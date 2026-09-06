@@ -9,6 +9,7 @@ import typer
 from pydantic import ValidationError
 
 from bank_ops.investigations import InvestigationRequest, TransactionQuestionError
+from bank_ops.retrieval import HuggingFaceBgeEmbedder, build_procedure_index
 from bank_ops.settings import Settings
 
 
@@ -41,11 +42,20 @@ def create_foundation_agent(settings: Settings) -> AgentBoundary:
 
 
 SettingsLoader = Callable[[], Settings]
+IndexBuilder = Callable[[Settings], int]
+
+
+def create_procedure_index(settings: Settings) -> int:
+    """Build the configured procedure index with the selected embedding model."""
+
+    embedder = HuggingFaceBgeEmbedder(settings.embedding_model)
+    return build_procedure_index(embedder, settings.procedure_index_dir)
 
 
 def create_app(
     agent_factory: AgentFactory = create_foundation_agent,
     settings_loader: SettingsLoader = Settings,
+    index_builder: IndexBuilder = create_procedure_index,
 ) -> typer.Typer:
     """Build the CLI with injectable edges for deterministic tests."""
 
@@ -58,6 +68,16 @@ def create_app(
     @cli.callback()
     def main() -> None:
         """Investigate fictional held transactions safely."""
+
+    @cli.command()
+    def build_index() -> None:
+        """Rebuild the local FAISS procedure index from packaged Markdown."""
+
+        settings = _load_settings(settings_loader)
+        chunk_count = index_builder(settings)
+        typer.echo(
+            f"Built {chunk_count} procedure sections in {settings.procedure_index_dir}."
+        )
 
     @cli.command()
     def investigate(
@@ -75,23 +95,26 @@ def create_app(
         except TransactionQuestionError as error:
             raise typer.BadParameter(str(error), param_hint="QUESTION") from error
 
-        try:
-            settings = settings_loader()
-        except ValidationError as error:
-            fields = ", ".join(
-                ".".join(str(part) for part in detail["loc"])
-                for detail in error.errors()
-            )
-            typer.echo(
-                f"Invalid configuration for: {fields}. Check BANK_OPS_* settings.",
-                err=True,
-            )
-            raise typer.Exit(code=2) from error
+        settings = _load_settings(settings_loader)
 
         agent = agent_factory(settings)
         typer.echo(agent(request))
 
     return cli
+
+
+def _load_settings(settings_loader: SettingsLoader) -> Settings:
+    try:
+        return settings_loader()
+    except ValidationError as error:
+        fields = ", ".join(
+            ".".join(str(part) for part in detail["loc"]) for detail in error.errors()
+        )
+        typer.echo(
+            f"Invalid configuration for: {fields}. Check BANK_OPS_* settings.",
+            err=True,
+        )
+        raise typer.Exit(code=2) from error
 
 
 app = create_app()

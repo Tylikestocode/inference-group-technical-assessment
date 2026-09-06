@@ -1,5 +1,6 @@
 """Validated runtime configuration for the application."""
 
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import AnyHttpUrl, Field
@@ -24,3 +25,4 @@ class Settings(BaseSettings):
     ollama_url: AnyHttpUrl = AnyHttpUrl("http://localhost:11434")
     generation_model: ModelName = "qwen3.5:9b"
     embedding_model: ModelName = "BAAI/bge-small-en-v1.5"
+    procedure_index_dir: Path = Path("var/retrieval")

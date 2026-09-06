@@ -34,6 +34,32 @@ Runtime configuration can be supplied through a `.env` file or environment
 variables. Copy `.env.example` to see the available `BANK_OPS_*` settings and
 their local-development values.
 
+## Procedure search index
+
+Build the local procedure index from the four packaged Markdown procedures:
+
+```sh
+uv run bank-ops build-index
+```
+
+The first build downloads `BAAI/bge-small-en-v1.5`. Later builds reuse the
+local Hugging Face cache. The generated FAISS index and its citation metadata
+are written to `var/retrieval/` by default; set
+`BANK_OPS_PROCEDURE_INDEX_DIR` to use another application-local directory.
+
+Run the deterministic retrieval tests without downloading a model:
+
+```sh
+uv run pytest tests/retrieval
+```
+
+To exercise the real embedding model and confirm that the `TXN-0212` hold
+reason returns the Beneficiary Verification procedure first, run:
+
+```sh
+RUN_RETRIEVAL_INTEGRATION=1 uv run pytest -m retrieval_integration
+```
+
 ## Prerequisites
 
 - Docker Desktop or Docker Engine with Docker Compose v2
