@@ -11,6 +11,7 @@ TimeoutSeconds = Annotated[float, Field(gt=0, le=600)]
 Temperature = Annotated[float, Field(ge=0, le=2)]
 MaxGenerationTokens = Annotated[int, Field(gt=0, le=512)]
 GenerationSeed = Annotated[int, Field(ge=0)]
+MinimumRelevanceScore = Annotated[float, Field(ge=0, le=1)]
 
 
 class Settings(BaseSettings):
@@ -35,3 +36,4 @@ class Settings(BaseSettings):
     generation_seed: GenerationSeed = 42
     embedding_model: ModelName = "BAAI/bge-small-en-v1.5"
     procedure_index_dir: Path = Path("var/retrieval")
+    minimum_relevance_score: MinimumRelevanceScore = 0.6

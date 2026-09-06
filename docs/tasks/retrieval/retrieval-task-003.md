@@ -1,6 +1,6 @@
 # Retrieval Task 003: Add retrieval safeguards and checks
 
-- Status: Planned
+- Status: Done
 - Slice: 3 - Safe and demonstrable prototype
 - Size: Small
 - Depends on: Retrieval Task 002
