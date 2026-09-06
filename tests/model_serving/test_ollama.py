@@ -4,9 +4,14 @@ from decimal import Decimal
 
 import httpx
 import pytest
-from pydantic import ValidationError
 
-from bank_ops.model_serving import ExplanationRequest, GeneratedExplanation
+from bank_ops.model_serving import (
+    ExplanationRequest,
+    GeneratedExplanation,
+    InvalidModelResponse,
+    ModelTimedOut,
+    ModelUnavailable,
+)
 from bank_ops.model_serving.ollama import OllamaExplanationGenerator
 from bank_ops.transactions.models import TransactionResponse
 
@@ -137,13 +142,56 @@ def test_adapter_rejects_invalid_structured_content(content: str) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"message": {"content": content}})
 
-    with client_for(handler) as client, pytest.raises(ValidationError):
-        generator(client).generate(explanation_request())
+    with client_for(handler) as client:
+        result = generator(client).generate(explanation_request())
+
+    assert result == InvalidModelResponse()
 
 
-def test_adapter_preserves_http_failures_for_the_workflow_failure_task() -> None:
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(200, content=b"not-json"),
+        httpx.Response(200, json={"message": {}}),
+    ],
+)
+def test_adapter_returns_invalid_result_for_invalid_provider_response(
+    response: httpx.Response,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response
+
+    with client_for(handler) as client:
+        result = generator(client).generate(explanation_request())
+
+    assert result == InvalidModelResponse()
+
+
+def test_adapter_returns_unavailable_result_for_http_failure() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"error": "model unavailable"})
 
-    with client_for(handler) as client, pytest.raises(httpx.HTTPStatusError):
-        generator(client).generate(explanation_request())
+    with client_for(handler) as client:
+        result = generator(client).generate(explanation_request())
+
+    assert result == ModelUnavailable()
+
+
+def test_adapter_returns_unavailable_result_for_connection_failure() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    with client_for(handler) as client:
+        result = generator(client).generate(explanation_request())
+
+    assert result == ModelUnavailable()
+
+
+def test_adapter_returns_timeout_result_for_request_timeout() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("model call timed out", request=request)
+
+    with client_for(handler) as client:
+        result = generator(client).generate(explanation_request())
+
+    assert result == ModelTimedOut()

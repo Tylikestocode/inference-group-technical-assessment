@@ -4,9 +4,13 @@ import pytest
 from pydantic import ValidationError
 
 from bank_ops.model_serving import (
+    ExplanationGenerationResult,
     ExplanationGenerator,
     ExplanationRequest,
     GeneratedExplanation,
+    InvalidModelResponse,
+    ModelTimedOut,
+    ModelUnavailable,
 )
 from bank_ops.transactions.models import TransactionResponse
 
@@ -83,3 +87,25 @@ def test_stand_in_can_replace_a_model_provider() -> None:
     assert generator.generate(request()) == GeneratedExplanation(
         explanation="A predictable explanation."
     )
+
+
+@pytest.mark.parametrize(
+    ("failure", "failure_type"),
+    [
+        (ModelUnavailable(), "model_unavailable"),
+        (ModelTimedOut(), "model_timed_out"),
+        (InvalidModelResponse(), "invalid_model_response"),
+    ],
+)
+def test_model_failures_are_strict_typed_results(
+    failure: ExplanationGenerationResult,
+    failure_type: str,
+) -> None:
+    assert not isinstance(failure, GeneratedExplanation)
+    assert failure.failure_type == failure_type
+
+    with pytest.raises(ValidationError):
+        type(failure).model_validate({"unexpected": "provider details"})
+
+    with pytest.raises(ValidationError):
+        failure.failure_type = failure_type

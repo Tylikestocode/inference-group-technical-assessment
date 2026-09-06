@@ -13,11 +13,22 @@ from bank_ops.investigations import (
     InvestigationOutcome,
     InvestigationRequest,
 )
-from bank_ops.model_serving import ExplanationRequest, GeneratedExplanation
+from bank_ops.model_serving import (
+    ExplanationGenerationFailure,
+    ExplanationRequest,
+    GeneratedExplanation,
+    InvalidModelResponse,
+    ModelTimedOut,
+    ModelUnavailable,
+)
 from bank_ops.policies import ADVISORY_ONLY_WARNING
 from bank_ops.retrieval import ProcedureSearchResult
 from bank_ops.transactions import TransactionLookupRequest, TransactionResponse
-from bank_ops.workflow import InvestigationWorkflow, InvestigationWorkflowError
+from bank_ops.workflow import (
+    MODEL_FALLBACK_WARNING,
+    InvestigationWorkflow,
+    InvestigationWorkflowError,
+)
 
 TRACE_ID = UUID("12345678-1234-5678-1234-567812345678")
 
@@ -59,6 +70,22 @@ class RecordingExplanationGenerator:
         self.events.append("generate_explanation")
         self.requests.append(request)
         return GeneratedExplanation(explanation=self.explanation)
+
+
+class FailingExplanationGenerator:
+    def __init__(
+        self,
+        events: list[str],
+        failure: ExplanationGenerationFailure,
+    ) -> None:
+        self.events = events
+        self.failure = failure
+        self.requests: list[ExplanationRequest] = []
+
+    def generate(self, request: ExplanationRequest) -> ExplanationGenerationFailure:
+        self.events.append("generate_explanation")
+        self.requests.append(request)
+        return self.failure
 
 
 def test_txn_0212_completes_the_grounded_happy_path() -> None:
@@ -170,8 +197,51 @@ def test_graph_exposes_the_controlled_linear_sequence() -> None:
         ("retrieve_procedures", "apply_decision_rules"),
         ("apply_decision_rules", "generate_explanation"),
         ("generate_explanation", "assemble_and_validate_response"),
+        ("generate_explanation", "build_model_fallback"),
+        ("build_model_fallback", "assemble_and_validate_response"),
         ("assemble_and_validate_response", "__end__"),
     }
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [ModelUnavailable(), ModelTimedOut(), InvalidModelResponse()],
+    ids=lambda failure: failure.failure_type,
+)
+def test_model_failure_uses_the_deterministic_fallback_route(
+    failure: ExplanationGenerationFailure,
+) -> None:
+    events: list[str] = []
+    generator = FailingExplanationGenerator(events, failure)
+    workflow = InvestigationWorkflow(
+        RecordingTransactionClient(events),
+        RecordingRetriever(events),
+        generator,
+        trace_id_factory=lambda: TRACE_ID,
+    )
+
+    response = workflow(InvestigationRequest.from_question("Why is TXN-0212 held?"))
+
+    assert events == [
+        "lookup_transaction",
+        "retrieve_procedures",
+        "generate_explanation",
+    ]
+    assert len(generator.requests) == 1
+    assert response.explanation == (
+        "TXN-0212 has verified status held. Model-generated wording is "
+        "unavailable; use the cited procedure and predetermined next action "
+        "shown below."
+    )
+    assert response.transaction == _transaction()
+    assert response.procedure.procedure_id == "PROC-003"
+    assert (
+        response.recommended_next_action
+        is AllowedNextAction.VERIFY_BENEFICIARY_AND_REFER
+    )
+    assert response.human_review_required is True
+    assert response.escalation_destination is EscalationDestination.PAYMENTS_OPERATIONS
+    assert response.warnings == (ADVISORY_ONLY_WARNING, MODEL_FALLBACK_WARNING)
 
 
 def test_mismatched_api_response_is_rejected_before_retrieval() -> None:
