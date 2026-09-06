@@ -1,1 +1,80 @@
 # Inference Group Technical Assessment
+
+This repository contains a local AI Operations Agent prototype. The first
+runtime component is Qwen 3.5 9B served by Ollama through Docker Compose.
+
+## Prerequisites
+
+- Docker Desktop or Docker Engine with Docker Compose v2
+- A practical minimum of 24 GB of system memory
+- At least 12 GB of free disk space for the Ollama image and model data
+
+When using Docker Desktop, allocate at least 12 GB of memory to its Linux VM;
+16 GB is recommended. An 8 GB Docker memory limit is not sufficient to load
+this model reliably, even when the host has additional free memory.
+
+The default configuration is a portable CPU-only baseline. Inference speed and
+hardware acceleration vary by operating system and hardware; platform-specific
+GPU tuning is outside the scope of this prototype.
+
+The `qwen3.5:9b` model download is approximately 6.6 GB. The first setup can
+therefore take several minutes, depending on the network connection. The first
+prompt after startup can also be slower while Ollama loads the model into
+memory.
+
+## Set up the model
+
+Run the setup script from the repository root:
+
+```sh
+./scripts/setup-model.sh
+```
+
+The script starts Ollama, waits for it to accept connections, and downloads
+`qwen3.5:9b`. It is safe to run the command again; Ollama reuses the downloaded
+model data.
+
+Run a live smoke test:
+
+```sh
+./scripts/smoke-test-model.sh
+```
+
+The smoke test sends a prompt from a Compose helper container to
+`http://ollama:11434`. This is the same service-name address that the
+containerized application will use. From the host machine, the API is available
+at `http://localhost:11434`.
+
+## Operate Ollama
+
+Start or stop the service independently:
+
+```sh
+docker compose up -d ollama
+docker compose stop ollama
+```
+
+Inspect its state and logs:
+
+```sh
+docker compose ps
+docker compose logs -f ollama
+```
+
+Restart Ollama and confirm that the model remains installed:
+
+```sh
+docker compose restart ollama
+docker compose --profile tools run --rm --no-deps -T ollama-cli list
+./scripts/smoke-test-model.sh
+```
+
+Stop and remove the containers while retaining the downloaded model:
+
+```sh
+docker compose down
+```
+
+The model is stored in the named `ollama_data` volume and remains available
+after container or service restarts. To remove the model data as well, run
+`docker compose down -v`. The next setup will download the model again.
