@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -5,7 +6,12 @@ from uuid import UUID
 import pytest
 from typer.testing import CliRunner
 
-from bank_ops.cli import AgentBoundary, create_app, format_investigation_response
+from bank_ops.cli import (
+    AgentBoundary,
+    ExitCode,
+    create_app,
+    format_investigation_response,
+)
 from bank_ops.investigations import (
     AllowedNextAction,
     EscalationDestination,
@@ -88,6 +94,60 @@ def test_valid_question_is_passed_to_the_agent_boundary() -> None:
     assert len(received_settings) == 1
 
 
+def test_json_output_serializes_the_complete_validated_response() -> None:
+    response = _investigation_response()
+
+    result = runner.invoke(
+        create_app(
+            agent_factory=lambda settings: lambda request: response,
+            settings_loader=_test_settings,
+        ),
+        ["investigate", "Why is TXN-0212 held?", "--json"],
+    )
+
+    assert result.exit_code == ExitCode.SUCCESS
+    assert json.loads(result.stdout) == response.model_dump(mode="json")
+    assert "=== Fictional assessment data ===" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("outcome", "action", "exit_code"),
+    [
+        (
+            InvestigationOutcome.TRANSACTION_NOT_FOUND,
+            AllowedNextAction.CONFIRM_TRANSACTION_ID_AND_REFER,
+            ExitCode.TRANSACTION_NOT_FOUND,
+        ),
+        (
+            InvestigationOutcome.TRANSACTION_SERVICE_UNAVAILABLE,
+            AllowedNextAction.RETRY_LOOKUP_OR_REFER,
+            ExitCode.TRANSACTION_SERVICE_UNAVAILABLE,
+        ),
+    ],
+)
+def test_lookup_failures_have_distinct_structured_output_and_exit_codes(
+    outcome: InvestigationOutcome,
+    action: AllowedNextAction,
+    exit_code: ExitCode,
+) -> None:
+    response = _lookup_failure_response(outcome, action)
+
+    result = runner.invoke(
+        create_app(
+            agent_factory=lambda settings: lambda request: response,
+            settings_loader=_test_settings,
+        ),
+        ["investigate", "Why is TXN-0212 held?", "--json"],
+    )
+
+    assert result.exit_code == exit_code
+    payload = json.loads(result.stdout)
+    assert payload["outcome"] == outcome.value
+    assert payload["transaction"] is None
+    assert payload["procedure"] is None
+    assert "Traceback" not in result.output
+
+
 def test_build_index_uses_configured_builder() -> None:
     received: list[Settings] = []
 
@@ -103,6 +163,22 @@ def test_build_index_uses_configured_builder() -> None:
     assert result.exit_code == 0
     assert result.stdout.strip() == "Built 13 procedure sections in var/retrieval."
     assert received == [_test_settings()]
+
+
+def test_build_index_system_failure_is_reported_without_a_traceback() -> None:
+    def failing_builder(settings: Settings) -> int:
+        del settings
+        raise RuntimeError("embedding service is unavailable")
+
+    result = runner.invoke(
+        create_app(settings_loader=_test_settings, index_builder=failing_builder),
+        ["build-index"],
+    )
+
+    assert result.exit_code == ExitCode.SYSTEM_FAILURE
+    assert "procedure index could not be built" in result.output
+    assert "embedding service is unavailable" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_response_without_escalation_or_warnings_has_explicit_fallbacks() -> None:
@@ -198,6 +274,47 @@ def test_invalid_configuration_is_reported_without_calling_agent() -> None:
     assert "Traceback" not in result.output
 
 
+def test_configuration_loader_failure_is_reported_without_a_traceback() -> None:
+    def failing_settings_loader() -> Settings:
+        raise RuntimeError("configuration source is unreadable")
+
+    result = runner.invoke(
+        create_app(settings_loader=failing_settings_loader),
+        ["investigate", "Why is TXN-0212 held?"],
+    )
+
+    assert result.exit_code == ExitCode.SYSTEM_FAILURE
+    assert "configuration could not be loaded" in result.output
+    assert "configuration source is unreadable" in result.output
+    assert "Traceback" not in result.output
+
+
+@pytest.mark.parametrize("failure_stage", ["factory", "agent"])
+def test_investigation_system_failure_is_clear_and_has_no_traceback(
+    failure_stage: str,
+) -> None:
+    def factory(settings: Settings) -> AgentBoundary:
+        del settings
+        if failure_stage == "factory":
+            raise RuntimeError("procedure index is unavailable")
+
+        def failing_agent(request: InvestigationRequest) -> InvestigationResponse:
+            del request
+            raise RuntimeError("workflow contract failed")
+
+        return failing_agent
+
+    result = runner.invoke(
+        create_app(agent_factory=factory, settings_loader=_test_settings),
+        ["investigate", "Why is TXN-0212 held?", "--json"],
+    )
+
+    assert result.exit_code == ExitCode.SYSTEM_FAILURE
+    assert "investigation could not be" in result.output
+    assert result.stdout == ""
+    assert "Traceback" not in result.output
+
+
 def _test_settings() -> Settings:
     return Settings(_env_file=None)
 
@@ -230,5 +347,27 @@ def _investigation_response() -> InvestigationResponse:
         recommended_next_action=AllowedNextAction.VERIFY_BENEFICIARY_AND_REFER,
         human_review_required=True,
         escalation_destination=EscalationDestination.PAYMENTS_OPERATIONS,
+        warnings=(ADVISORY_ONLY_WARNING,),
+    )
+
+
+def _lookup_failure_response(
+    outcome: InvestigationOutcome,
+    action: AllowedNextAction,
+) -> InvestigationResponse:
+    return InvestigationResponse(
+        trace_id=UUID("12345678-1234-5678-1234-567812345678"),
+        requested_transaction_id="TXN-0212",
+        outcome=outcome,
+        transaction=None,
+        procedure=None,
+        explanation=(
+            "The transaction was not found."
+            if outcome is InvestigationOutcome.TRANSACTION_NOT_FOUND
+            else "The transaction service is unavailable."
+        ),
+        recommended_next_action=action,
+        human_review_required=True,
+        escalation_destination=EscalationDestination.OPERATIONS_CONTROL,
         warnings=(ADVISORY_ONLY_WARNING,),
     )

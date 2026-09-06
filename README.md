@@ -65,11 +65,32 @@ Show the available commands or submit a transaction question:
 ```sh
 uv run bank-ops --help
 uv run bank-ops investigate "Why is TXN-0212 held?"
+uv run bank-ops investigate "Why is TXN-0212 held?" --json
 ```
 
 Questions must contain exactly one case-sensitive transaction ID in the form
 `TXN-0000`. Invalid questions are rejected before any API, retriever, or model
 is initialized.
+
+`--json` serializes the same validated investigation response used by the
+readable view. This keeps exact monetary values, timestamps, procedure citation
+details, warnings, and the trace ID available to scripts.
+
+The command uses stable exit codes so demonstrations and scripts can distinguish
+outcomes:
+
+| Exit code | Meaning |
+| ---: | --- |
+| `0` | Investigation completed, including a safe model fallback |
+| `1` | The CLI could not start or complete the operation |
+| `2` | Invalid command input or configuration |
+| `3` | Transaction was not found |
+| `4` | Transaction service was unavailable |
+| `5` | No relevant procedure was available |
+
+Expected failure responses are still printed in full (as readable text or valid
+JSON) before the command exits. Operational startup failures are written to
+standard error without a traceback.
 
 The investigation is displayed as a concise advisor-facing summary. All data in
 the prototype is fictional assessment data. A successful `TXN-0212` run has the
@@ -94,6 +115,44 @@ Warnings:
   - This agent is advisory and cannot release, approve, reject, edit, or bypass the transaction.
 Trace ID: 12345678-1234-5678-1234-567812345678
 ```
+
+### Short demo sequence
+
+From a clean checkout, prepare the locked environment and local services, then
+run the readable, JSON, and unknown-transaction cases:
+
+```sh
+uv sync --locked
+docker compose up -d --build --wait api
+./scripts/setup-model.sh
+uv run bank-ops build-index
+uv run bank-ops investigate "Why is TXN-0212 held?"
+uv run bank-ops investigate "Why is TXN-0212 held?" --json
+uv run bank-ops investigate "Why is TXN-9999 held?" --json
+```
+
+The final command returns exit code `3` and an outcome of
+`transaction_not_found`. Stop the API to demonstrate the distinguishable
+unavailable-service response, which returns exit code `4`, then restore it:
+
+```sh
+docker compose stop api
+uv run bank-ops investigate "Why is TXN-0212 held?" --json
+docker compose start --wait api
+```
+
+To run the investigation CLI inside Docker Compose using the same persisted
+procedure index:
+
+```sh
+docker compose --profile tools build procedure-index cli
+docker compose --profile tools run --rm procedure-index
+docker compose --profile tools run --rm cli investigate "Why is TXN-0212 held?" --json
+```
+
+The `cli` service uses Compose service addresses for the transaction API and
+Ollama, while direct `uv run` commands use the host addresses from `.env` or
+their defaults.
 
 Runtime configuration can be supplied through a `.env` file or environment
 variables. Copy `.env.example` to see the available `BANK_OPS_*` settings and

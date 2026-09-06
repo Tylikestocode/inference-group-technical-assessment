@@ -1,6 +1,6 @@
 # CLI Task 003: Add JSON output and demo-friendly errors
 
-- Status: Planned
+- Status: Done
 - Slice: 3 - Safe and demonstrable prototype
 - Size: Small
 - Depends on: CLI Task 002, Agent Task 003
