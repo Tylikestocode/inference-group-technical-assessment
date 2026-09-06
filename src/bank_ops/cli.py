@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from enum import IntEnum
 from typing import Annotated, Protocol
 
 import typer
 from pydantic import ValidationError
 
 from bank_ops.investigations import (
+    InvestigationOutcome,
     InvestigationRequest,
     InvestigationResponse,
     TransactionQuestionError,
@@ -34,6 +36,26 @@ class AgentFactory(Protocol):
 
 SettingsLoader = Callable[[], Settings]
 IndexBuilder = Callable[[Settings], int]
+
+
+class ExitCode(IntEnum):
+    """Stable process exit codes for scripts and demonstrations."""
+
+    SUCCESS = 0
+    SYSTEM_FAILURE = 1
+    INVALID_INPUT = 2
+    TRANSACTION_NOT_FOUND = 3
+    TRANSACTION_SERVICE_UNAVAILABLE = 4
+    NO_RELEVANT_PROCEDURE = 5
+
+
+_OUTCOME_EXIT_CODES = {
+    InvestigationOutcome.TRANSACTION_NOT_FOUND: ExitCode.TRANSACTION_NOT_FOUND,
+    InvestigationOutcome.TRANSACTION_SERVICE_UNAVAILABLE: (
+        ExitCode.TRANSACTION_SERVICE_UNAVAILABLE
+    ),
+    InvestigationOutcome.NO_RELEVANT_PROCEDURE: ExitCode.NO_RELEVANT_PROCEDURE,
+}
 
 
 def create_procedure_index(settings: Settings) -> int:
@@ -65,7 +87,10 @@ def create_app(
         """Rebuild the local FAISS procedure index from packaged Markdown."""
 
         settings = _load_settings(settings_loader)
-        chunk_count = index_builder(settings)
+        try:
+            chunk_count = index_builder(settings)
+        except Exception as error:
+            _exit_for_system_failure("The procedure index could not be built", error)
         typer.echo(
             f"Built {chunk_count} procedure sections in {settings.procedure_index_dir}."
         )
@@ -78,6 +103,13 @@ def create_app(
                 help='Transaction question, for example "Why is TXN-0212 held?".'
             ),
         ],
+        json_output: Annotated[
+            bool,
+            typer.Option(
+                "--json",
+                help="Write the validated investigation response as JSON.",
+            ),
+        ] = False,
     ) -> None:
         """Validate a transaction question and submit it for investigation."""
 
@@ -88,8 +120,26 @@ def create_app(
 
         settings = _load_settings(settings_loader)
 
-        agent = agent_factory(settings)
-        typer.echo(format_investigation_response(agent(request)))
+        try:
+            agent = agent_factory(settings)
+        except Exception as error:
+            _exit_for_system_failure("The investigation could not be started", error)
+
+        try:
+            response = InvestigationResponse.model_validate(agent(request))
+        except Exception as error:
+            _exit_for_system_failure("The investigation could not be completed", error)
+
+        output = (
+            format_investigation_response_json(response)
+            if json_output
+            else format_investigation_response(response)
+        )
+        typer.echo(output)
+
+        exit_code = _OUTCOME_EXIT_CODES.get(response.outcome, ExitCode.SUCCESS)
+        if exit_code != ExitCode.SUCCESS:
+            raise typer.Exit(code=exit_code)
 
     return cli
 
@@ -143,6 +193,12 @@ def format_investigation_response(response: InvestigationResponse) -> str:
     return "\n".join(lines)
 
 
+def format_investigation_response_json(response: InvestigationResponse) -> str:
+    """Serialize the same validated response used by the readable view."""
+
+    return response.model_dump_json(indent=2)
+
+
 def _load_settings(settings_loader: SettingsLoader) -> Settings:
     try:
         return settings_loader()
@@ -154,7 +210,18 @@ def _load_settings(settings_loader: SettingsLoader) -> Settings:
             f"Invalid configuration for: {fields}. Check BANK_OPS_* settings.",
             err=True,
         )
-        raise typer.Exit(code=2) from error
+        raise typer.Exit(code=ExitCode.INVALID_INPUT) from error
+    except Exception as error:
+        _exit_for_system_failure("Application configuration could not be loaded", error)
+
+
+def _exit_for_system_failure(message: str, error: Exception) -> None:
+    """Report an operational failure without exposing an implementation traceback."""
+
+    detail = str(error).strip()
+    suffix = f": {detail}" if detail else "."
+    typer.echo(f"Error: {message}{suffix}", err=True)
+    raise typer.Exit(code=ExitCode.SYSTEM_FAILURE) from error
 
 
 app = create_app()
