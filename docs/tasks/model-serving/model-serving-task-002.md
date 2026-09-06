@@ -1,6 +1,6 @@
 # Model Serving Task 002: Implement the replaceable model adapter
 
-- Status: Planned
+- Status: Done
 - Slice: 2 - Complete TXN-0212 investigation
 - Size: Small
 - Depends on: Model Serving Task 001

@@ -88,6 +88,17 @@ Run a live smoke test:
 ./scripts/smoke-test-model.sh
 ```
 
+To exercise the application adapter itself against the installed model, run:
+
+```sh
+BANK_OPS_RUN_MODEL_INTEGRATION=1 uv run pytest -m integration \
+  tests/model_serving/test_ollama_integration.py
+```
+
+This test sends the fictional `TXN-0212` facts, the retrieved `PROC-003` text,
+and a predetermined next action to Qwen, then validates its structured reply.
+The normal test suite skips this opt-in integration test.
+
 The smoke test sends a prompt from a Compose helper container to
 `http://ollama:11434`. This is the same service-name address that the
 containerized application will use. From the host machine, the API is available

@@ -30,3 +30,6 @@ packages = ["src/bank_ops"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: requires locally running infrastructure",
+]
