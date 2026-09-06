@@ -17,30 +17,22 @@ uv run pytest
 The tests use packaged fictional transaction records and do not require Ollama
 or another live service.
 
-## Model explanation adapter
+## Run the transaction API
 
-The application owns a small `ExplanationGenerator` interface. Its input is
-limited to a validated transaction, retrieved procedure text, and an action
-that application rules have already selected. The interface returns one
-validated explanation and does not expose model-specific request or response
-types. The current Ollama implementation is therefore replaceable by another
-local runtime or a cloud inference adapter without changing the investigation
-workflow.
+Start the read-only synthetic transaction service from the repository root:
 
-The following environment settings configure generation:
+```sh
+uv run uvicorn bank_ops.transactions.api:app --host 127.0.0.1 --port 8000
+```
 
-| Setting | Default | Purpose |
-| --- | --- | --- |
-| `BANK_OPS_OLLAMA_URL` | `http://localhost:11434` | Ollama API address |
-| `BANK_OPS_GENERATION_MODEL` | `qwen3.5:9b` | Provider model name |
-| `BANK_OPS_GENERATION_TIMEOUT_SECONDS` | `120` | HTTP request timeout |
-| `BANK_OPS_GENERATION_TEMPERATURE` | `0` | Sampling temperature |
-| `BANK_OPS_GENERATION_MAX_TOKENS` | `160` | Maximum generated tokens |
-| `BANK_OPS_GENERATION_SEED` | `42` | Repeatable sampling seed |
+Look up a known or unknown transaction in another terminal:
 
-Copy `.env.example` to `.env` to override these values for local development.
-Provider credentials are not needed for the local Ollama service; a future
-cloud adapter can add its own credential settings at the composition boundary.
+```sh
+curl --fail-with-body http://127.0.0.1:8000/transactions/TXN-0212
+curl --fail-with-body http://127.0.0.1:8000/transactions/TXN-9999
+```
+
+The service exposes no endpoints for creating or changing transactions.
 
 ## Command-line interface
 
