@@ -1,6 +1,6 @@
 # Model Serving Task 003: Add readiness and graceful fallback
 
-- Status: Planned
+- Status: Done
 - Slice: 3 - Safe and demonstrable prototype
 - Size: Small
 - Depends on: Model Serving Task 002
