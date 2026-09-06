@@ -1,6 +1,20 @@
 name: ai-operations-agent
 
 services:
+  procedure-index:
+    build:
+      context: .
+    command:
+      - bank-ops
+      - build-index
+    environment:
+      BANK_OPS_EMBEDDING_MODEL: BAAI/bge-small-en-v1.5
+      BANK_OPS_PROCEDURE_INDEX_DIR: /var/lib/bank-ops/retrieval
+    profiles:
+      - tools
+    volumes:
+      - procedure_index_data:/var/lib/bank-ops/retrieval
+
   api:
     build:
       context: .
@@ -50,3 +64,4 @@ services:
 
 volumes:
   ollama_data:
+  procedure_index_data:

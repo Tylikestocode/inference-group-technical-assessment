@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
+from dataclasses import dataclass
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
+from typing import Protocol
 
 from bank_ops.retrieval.models import ProcedureChunk
 
@@ -15,14 +18,35 @@ _SECTION = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 _REQUIRED_METADATA = ("Procedure ID", "Version", "Owner", "Data label")
 
 
+class _Digest(Protocol):
+    def update(self, data: bytes) -> None:
+        """Add bytes to the digest state."""
+
+
 class ProcedureCorpusError(RuntimeError):
     """Raised when a procedure document cannot produce trustworthy chunks."""
+
+
+@dataclass(frozen=True)
+class ProcedureCorpusSnapshot:
+    """Validated chunks and the fingerprint of their exact source documents."""
+
+    chunks: tuple[ProcedureChunk, ...]
+    source_fingerprint: str
 
 
 def load_procedure_chunks(
     corpus_directory: str | Path | None = None,
 ) -> tuple[ProcedureChunk, ...]:
     """Load every Markdown procedure in deterministic filename order."""
+
+    return load_procedure_corpus(corpus_directory).chunks
+
+
+def load_procedure_corpus(
+    corpus_directory: str | Path | None = None,
+) -> ProcedureCorpusSnapshot:
+    """Load and fingerprint every procedure from one consistent source snapshot."""
 
     directory: Traversable
     if corpus_directory is None:
@@ -50,14 +74,18 @@ def load_procedure_chunks(
         raise ProcedureCorpusError(f"No Markdown procedures found at {directory}")
 
     chunks: list[ProcedureChunk] = []
+    fingerprint = hashlib.sha256()
     observed_ids: dict[str, str] = {}
     for procedure_file in procedure_files:
         try:
-            document = procedure_file.read_text(encoding="utf-8")
-        except OSError as error:
+            source = procedure_file.read_bytes()
+            document = source.decode("utf-8")
+        except (OSError, UnicodeError) as error:
             raise ProcedureCorpusError(
                 f"Unable to read procedure {procedure_file.name}: {error}"
             ) from error
+
+        _add_fingerprint_entry(fingerprint, procedure_file.name, source)
 
         file_chunks = _parse_procedure(document, procedure_file.name)
         procedure_id = file_chunks[0].procedure_id
@@ -69,7 +97,21 @@ def load_procedure_chunks(
         observed_ids[procedure_id] = procedure_file.name
         chunks.extend(file_chunks)
 
-    return tuple(chunks)
+    return ProcedureCorpusSnapshot(
+        chunks=tuple(chunks), source_fingerprint=fingerprint.hexdigest()
+    )
+
+
+def _add_fingerprint_entry(
+    fingerprint: _Digest, source_file: str, source: bytes
+) -> None:
+    """Add one length-delimited filename and document to a corpus digest."""
+
+    filename = source_file.encode("utf-8")
+    fingerprint.update(len(filename).to_bytes(8, "big"))
+    fingerprint.update(filename)
+    fingerprint.update(len(source).to_bytes(8, "big"))
+    fingerprint.update(source)
 
 
 def _parse_procedure(document: str, source_file: str) -> tuple[ProcedureChunk, ...]:
