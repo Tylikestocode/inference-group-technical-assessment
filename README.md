@@ -17,6 +17,23 @@ uv run pytest
 The tests use packaged fictional transaction records and do not require Ollama
 or another live service.
 
+## Command-line interface
+
+Show the available commands or submit a transaction question:
+
+```sh
+uv run bank-ops --help
+uv run bank-ops investigate "Why is TXN-0212 held?"
+```
+
+Questions must contain exactly one case-sensitive transaction ID in the form
+`TXN-0000`. Invalid questions are rejected before any API, retriever, or model
+is initialized.
+
+Runtime configuration can be supplied through a `.env` file or environment
+variables. Copy `.env.example` to see the available `BANK_OPS_*` settings and
+their local-development values.
+
 ## Prerequisites
 
 - Docker Desktop or Docker Engine with Docker Compose v2

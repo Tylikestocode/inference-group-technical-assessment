@@ -1,6 +1,6 @@
 # CLI Task 001: Create the command-line entry point
 
-- Status: Planned
+- Status: Done
 - Slice: 1 - Runnable foundation
 - Size: Small
 - Related ADRs: ADR-003, ADR-010, ADR-011

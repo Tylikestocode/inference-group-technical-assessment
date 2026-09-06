@@ -6,7 +6,12 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "pydantic>=2.12,<3",
+    "pydantic-settings>=2.10,<3",
+    "typer>=0.17,<1",
 ]
+
+[project.scripts]
+bank-ops = "bank_ops.cli:app"
 
 [dependency-groups]
 dev = [
