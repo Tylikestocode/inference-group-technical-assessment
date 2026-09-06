@@ -1,6 +1,6 @@
 # Retrieval Task 001: Create the procedure corpus
 
-- Status: Planned
+- Status: Done
 - Slice: 1 - Runnable foundation
 - Size: Small
 - Related ADRs: ADR-008, ADR-014
