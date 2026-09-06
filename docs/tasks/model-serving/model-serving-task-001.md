@@ -1,6 +1,6 @@
 # Model Serving Task 001: Start Qwen with Docker Compose
 
-- Status: Planned
+- Status: Done
 - Slice: 1 - Runnable foundation
 - Size: Small
 - Related ADRs: ADR-004, ADR-006
