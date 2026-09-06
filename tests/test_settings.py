@@ -13,6 +13,10 @@ def test_settings_have_local_development_defaults(
         "BANK_OPS_TRANSACTION_API_URL",
         "BANK_OPS_OLLAMA_URL",
         "BANK_OPS_GENERATION_MODEL",
+        "BANK_OPS_GENERATION_TIMEOUT_SECONDS",
+        "BANK_OPS_GENERATION_TEMPERATURE",
+        "BANK_OPS_GENERATION_MAX_TOKENS",
+        "BANK_OPS_GENERATION_SEED",
         "BANK_OPS_EMBEDDING_MODEL",
         "BANK_OPS_PROCEDURE_INDEX_DIR",
     ):
@@ -23,6 +27,10 @@ def test_settings_have_local_development_defaults(
     assert str(settings.transaction_api_url) == "http://localhost:8000/"
     assert str(settings.ollama_url) == "http://localhost:11434/"
     assert settings.generation_model == "qwen3.5:9b"
+    assert settings.generation_timeout_seconds == 120
+    assert settings.generation_temperature == 0
+    assert settings.generation_max_tokens == 160
+    assert settings.generation_seed == 42
     assert settings.embedding_model == "BAAI/bge-small-en-v1.5"
     assert settings.procedure_index_dir == Path("var/retrieval")
 
@@ -31,6 +39,10 @@ def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("BANK_OPS_TRANSACTION_API_URL", "http://transactions:8000")
     monkeypatch.setenv("BANK_OPS_OLLAMA_URL", "http://ollama:11434")
     monkeypatch.setenv("BANK_OPS_GENERATION_MODEL", "local-generation-model")
+    monkeypatch.setenv("BANK_OPS_GENERATION_TIMEOUT_SECONDS", "45.5")
+    monkeypatch.setenv("BANK_OPS_GENERATION_TEMPERATURE", "0.25")
+    monkeypatch.setenv("BANK_OPS_GENERATION_MAX_TOKENS", "80")
+    monkeypatch.setenv("BANK_OPS_GENERATION_SEED", "11")
     monkeypatch.setenv("BANK_OPS_EMBEDDING_MODEL", "local-embedding-model")
     monkeypatch.setenv("BANK_OPS_PROCEDURE_INDEX_DIR", "/tmp/procedure-index")
 
@@ -39,6 +51,10 @@ def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) ->
     assert str(settings.transaction_api_url) == "http://transactions:8000/"
     assert str(settings.ollama_url) == "http://ollama:11434/"
     assert settings.generation_model == "local-generation-model"
+    assert settings.generation_timeout_seconds == 45.5
+    assert settings.generation_temperature == 0.25
+    assert settings.generation_max_tokens == 80
+    assert settings.generation_seed == 11
     assert settings.embedding_model == "local-embedding-model"
     assert settings.procedure_index_dir == Path("/tmp/procedure-index")
 
@@ -49,6 +65,10 @@ def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) ->
         ("BANK_OPS_TRANSACTION_API_URL", "not-a-url"),
         ("BANK_OPS_OLLAMA_URL", "ftp://ollama.example"),
         ("BANK_OPS_GENERATION_MODEL", ""),
+        ("BANK_OPS_GENERATION_TIMEOUT_SECONDS", "0"),
+        ("BANK_OPS_GENERATION_TEMPERATURE", "2.1"),
+        ("BANK_OPS_GENERATION_MAX_TOKENS", "0"),
+        ("BANK_OPS_GENERATION_SEED", "-1"),
         ("BANK_OPS_EMBEDDING_MODEL", "   "),
     ],
 )

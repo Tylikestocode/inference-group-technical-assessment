@@ -17,6 +17,23 @@ uv run pytest
 The tests use packaged fictional transaction records and do not require Ollama
 or another live service.
 
+## Run the transaction API
+
+Start the read-only synthetic transaction service from the repository root:
+
+```sh
+uv run uvicorn bank_ops.transactions.api:app --host 127.0.0.1 --port 8000
+```
+
+Look up a known or unknown transaction in another terminal:
+
+```sh
+curl --fail-with-body http://127.0.0.1:8000/transactions/TXN-0212
+curl --fail-with-body http://127.0.0.1:8000/transactions/TXN-9999
+```
+
+The service exposes no endpoints for creating or changing transactions.
+
 ## Command-line interface
 
 Show the available commands or submit a transaction question:
@@ -96,6 +113,17 @@ Run a live smoke test:
 ```sh
 ./scripts/smoke-test-model.sh
 ```
+
+To exercise the application adapter itself against the installed model, run:
+
+```sh
+BANK_OPS_RUN_MODEL_INTEGRATION=1 uv run pytest -m integration \
+  tests/model_serving/test_ollama_integration.py
+```
+
+This test sends the fictional `TXN-0212` facts, the retrieved `PROC-003` text,
+and a predetermined next action to Qwen, then validates its structured reply.
+The normal test suite skips this opt-in integration test.
 
 The smoke test sends a prompt from a Compose helper container to
 `http://ollama:11434`. This is the same service-name address that the

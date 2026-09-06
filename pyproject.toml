@@ -5,12 +5,13 @@ description = "A local AI Operations Agent prototype"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "faiss-cpu>=1.12,<2",
-    "numpy>=1.26,<3",
+    "fastapi>=0.116,<1",
+    "httpx>=0.28,<1",
     "pydantic>=2.12,<3",
     "pydantic-settings>=2.10,<3",
     "sentence-transformers>=5,<6",
     "typer>=0.17,<1",
+    "uvicorn>=0.35,<1",
 ]
 
 [project.scripts]
@@ -31,5 +32,5 @@ packages = ["src/bank_ops"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "retrieval_integration: uses the real local Hugging Face embedding model",
+    "integration: requires locally running infrastructure",
 ]

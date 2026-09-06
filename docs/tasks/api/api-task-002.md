@@ -1,6 +1,6 @@
 # API Task 002: Expose the transaction lookup endpoint
 
-- Status: Planned
+- Status: Done
 - Slice: 2 - Complete TXN-0212 investigation
 - Size: Small
 - Depends on: API Task 001

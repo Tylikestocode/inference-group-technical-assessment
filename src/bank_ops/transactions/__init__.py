@@ -1,5 +1,6 @@
 """Validated transaction contracts and repository implementations."""
 
+from bank_ops.transactions.client import HttpTransactionClient, TransactionClient
 from bank_ops.transactions.models import (
     ErrorCode,
     RiskLevel,
@@ -18,9 +19,11 @@ from bank_ops.transactions.repository import (
 
 __all__ = [
     "ErrorCode",
+    "HttpTransactionClient",
     "JsonTransactionRepository",
     "RiskLevel",
     "TransactionChannel",
+    "TransactionClient",
     "TransactionDataError",
     "TransactionLookupRequest",
     "TransactionLookupResult",
