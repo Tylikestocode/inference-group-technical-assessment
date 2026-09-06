@@ -8,16 +8,21 @@ from typing import Annotated, Protocol
 import typer
 from pydantic import ValidationError
 
-from bank_ops.investigations import InvestigationRequest, TransactionQuestionError
+from bank_ops.investigations import (
+    InvestigationRequest,
+    InvestigationResponse,
+    TransactionQuestionError,
+)
 from bank_ops.retrieval import HuggingFaceBgeEmbedder, build_procedure_index
 from bank_ops.settings import Settings
+from bank_ops.workflow import create_investigation_workflow
 
 
 class AgentBoundary(Protocol):
     """Callable boundary that accepts a validated investigation request."""
 
-    def __call__(self, request: InvestigationRequest) -> str:
-        """Submit an investigation and return its current display message."""
+    def __call__(self, request: InvestigationRequest) -> InvestigationResponse:
+        """Submit an investigation and return its validated result."""
 
 
 class AgentFactory(Protocol):
@@ -25,20 +30,6 @@ class AgentFactory(Protocol):
 
     def __call__(self, settings: Settings) -> AgentBoundary:
         """Build the boundary without exposing service details to the CLI."""
-
-
-class FoundationAgent:
-    """Runnable stand-in until the controlled workflow is connected."""
-
-    def __call__(self, request: InvestigationRequest) -> str:
-        return f"Investigation request accepted for {request.transaction_id}."
-
-
-def create_foundation_agent(settings: Settings) -> AgentBoundary:
-    """Create the slice-one boundary without contacting external services."""
-
-    del settings
-    return FoundationAgent()
 
 
 SettingsLoader = Callable[[], Settings]
@@ -53,7 +44,7 @@ def create_procedure_index(settings: Settings) -> int:
 
 
 def create_app(
-    agent_factory: AgentFactory = create_foundation_agent,
+    agent_factory: AgentFactory = create_investigation_workflow,
     settings_loader: SettingsLoader = Settings,
     index_builder: IndexBuilder = create_procedure_index,
 ) -> typer.Typer:
@@ -98,9 +89,46 @@ def create_app(
         settings = _load_settings(settings_loader)
 
         agent = agent_factory(settings)
-        typer.echo(agent(request))
+        typer.echo(format_investigation_response(agent(request)))
 
     return cli
+
+
+def format_investigation_response(response: InvestigationResponse) -> str:
+    """Render a complete investigation for an advisor without raw system data."""
+
+    escalation = (
+        response.escalation_destination.value
+        if response.escalation_destination is not None
+        else "Not required"
+    )
+    lines = [
+        f"=== {response.data_label} ===",
+        f"Transaction: {response.transaction.transaction_id}",
+        f"Status: {response.transaction.status.value}",
+        f"Hold reason: {response.transaction.hold_reason or 'Not provided'}",
+        f"Outcome: {response.outcome.value.replace('_', ' ')}",
+        "",
+        "Relevant procedure:",
+        (
+            f"  {response.procedure.procedure_id} — {response.procedure.title} "
+            f"(version {response.procedure.version})"
+        ),
+        f"  Section: {response.procedure.section}",
+        "",
+        f"Explanation: {response.explanation}",
+        f"Next action: {response.recommended_next_action.value}",
+        f"Human review required: {'Yes' if response.human_review_required else 'No'}",
+        f"Escalation destination: {escalation}",
+    ]
+    if response.warnings:
+        lines.extend(
+            ("Warnings:", *(f"  - {warning}" for warning in response.warnings))
+        )
+    else:
+        lines.append("Warnings: None")
+    lines.append(f"Trace ID: {response.trace_id}")
+    return "\n".join(lines)
 
 
 def _load_settings(settings_loader: SettingsLoader) -> Settings:
