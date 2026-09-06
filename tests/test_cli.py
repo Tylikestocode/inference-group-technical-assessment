@@ -121,6 +121,28 @@ def test_response_without_escalation_or_warnings_has_explicit_fallbacks() -> Non
     assert "Warnings: None" in output
 
 
+def test_lookup_failure_response_renders_without_invented_details() -> None:
+    response = InvestigationResponse(
+        trace_id=UUID("12345678-1234-5678-1234-567812345678"),
+        requested_transaction_id="TXN-9999",
+        outcome=InvestigationOutcome.TRANSACTION_NOT_FOUND,
+        transaction=None,
+        procedure=None,
+        explanation="Transaction TXN-9999 was not found. No facts were inferred.",
+        recommended_next_action=AllowedNextAction.CONFIRM_TRANSACTION_ID_AND_REFER,
+        human_review_required=True,
+        escalation_destination=EscalationDestination.OPERATIONS_CONTROL,
+        warnings=("No transaction facts were available.",),
+    )
+
+    output = format_investigation_response(response)
+
+    assert "Transaction: TXN-9999" in output
+    assert "Status: Unavailable" in output
+    assert "Hold reason: Unavailable" in output
+    assert "Relevant procedure:\n  Not available" in output
+
+
 @pytest.mark.parametrize(
     "question",
     [

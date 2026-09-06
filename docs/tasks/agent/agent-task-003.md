@@ -1,6 +1,6 @@
 # Agent Task 003: Add safe failure and fallback routes
 
-- Status: Planned
+- Status: Done
 - Slice: 3 - Safe and demonstrable prototype
 - Size: Medium
 - Depends on: Agent Task 002, API Task 003, Retrieval Task 003, Model Serving Task 003

@@ -12,7 +12,6 @@ from bank_ops.investigations import (
 )
 from bank_ops.policies import (
     ADVISORY_ONLY_WARNING,
-    UnsupportedInvestigationError,
     decide_next_action,
 )
 from bank_ops.retrieval import ProcedureSearchResult
@@ -44,16 +43,47 @@ def test_beneficiary_hold_requires_payments_operations_review() -> None:
         ),
     ],
 )
-def test_unsupported_combinations_do_not_receive_an_invented_action(
+def test_uncertain_combinations_receive_only_the_manual_review_action(
     transaction_status: str,
     hold_reason: str | None,
     procedure_id: str,
 ) -> None:
-    with pytest.raises(UnsupportedInvestigationError, match="No happy-path"):
-        decide_next_action(
-            _transaction(status=transaction_status, hold_reason=hold_reason),
-            _procedure(procedure_id=procedure_id),
+    decision = decide_next_action(
+        _transaction(status=transaction_status, hold_reason=hold_reason),
+        _procedure(procedure_id=procedure_id),
+    )
+
+    if procedure_id == "PROC-001":
+        assert (
+            decision.recommended_next_action
+            is AllowedNextAction.REFER_SANCTIONS_REVIEW
         )
+        assert (
+            decision.escalation_destination
+            is EscalationDestination.FINANCIAL_CRIME_OPERATIONS
+        )
+    else:
+        assert decision.recommended_next_action is AllowedNextAction.REFER_MANUAL_REVIEW
+        assert (
+            decision.escalation_destination
+            is EscalationDestination.OPERATIONS_CONTROL
+        )
+    assert decision.human_review_required is True
+
+
+def test_high_risk_transaction_requires_transaction_monitoring_review() -> None:
+    transaction = _transaction(
+        status="held", hold_reason="Activity requires enhanced review."
+    ).model_copy(update={"risk_level": "high"})
+
+    decision = decide_next_action(transaction, _procedure(procedure_id="PROC-002"))
+
+    assert decision.recommended_next_action is AllowedNextAction.REFER_HIGH_RISK_REVIEW
+    assert (
+        decision.escalation_destination
+        is EscalationDestination.TRANSACTION_MONITORING_OPERATIONS
+    )
+    assert decision.human_review_required is True
 
 
 def _transaction(

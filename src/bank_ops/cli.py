@@ -97,6 +97,14 @@ def create_app(
 def format_investigation_response(response: InvestigationResponse) -> str:
     """Render a complete investigation for an advisor without raw system data."""
 
+    transaction = response.transaction
+    procedure = response.procedure
+    status = transaction.status.value if transaction is not None else "Unavailable"
+    hold_reason = (
+        transaction.hold_reason or "Not provided"
+        if transaction is not None
+        else "Unavailable"
+    )
     escalation = (
         response.escalation_destination.value
         if response.escalation_destination is not None
@@ -104,17 +112,21 @@ def format_investigation_response(response: InvestigationResponse) -> str:
     )
     lines = [
         f"=== {response.data_label} ===",
-        f"Transaction: {response.transaction.transaction_id}",
-        f"Status: {response.transaction.status.value}",
-        f"Hold reason: {response.transaction.hold_reason or 'Not provided'}",
+        f"Transaction: {response.requested_transaction_id}",
+        f"Status: {status}",
+        f"Hold reason: {hold_reason}",
         f"Outcome: {response.outcome.value.replace('_', ' ')}",
         "",
         "Relevant procedure:",
-        (
-            f"  {response.procedure.procedure_id} — {response.procedure.title} "
-            f"(version {response.procedure.version})"
+        *(
+            (
+                f"  {procedure.procedure_id} — {procedure.title} "
+                f"(version {procedure.version})",
+                f"  Section: {procedure.section}",
+            )
+            if procedure is not None
+            else ("  Not available",)
         ),
-        f"  Section: {response.procedure.section}",
         "",
         f"Explanation: {response.explanation}",
         f"Next action: {response.recommended_next_action.value}",
