@@ -13,6 +13,7 @@ def test_help_lists_the_investigate_command() -> None:
 
     assert result.exit_code == 0
     assert "investigate" in result.stdout
+    assert "build-index" in result.stdout
     assert "Investigate fictional held transactions safely." in result.stdout
 
 
@@ -42,6 +43,23 @@ def test_valid_question_is_passed_to_the_agent_boundary() -> None:
         )
     ]
     assert len(received_settings) == 1
+
+
+def test_build_index_uses_configured_builder() -> None:
+    received: list[Settings] = []
+
+    def builder(settings: Settings) -> int:
+        received.append(settings)
+        return 13
+
+    result = runner.invoke(
+        create_app(settings_loader=_test_settings, index_builder=builder),
+        ["build-index"],
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "Built 13 procedure sections in var/retrieval."
+    assert received == [_test_settings()]
 
 
 @pytest.mark.parametrize(

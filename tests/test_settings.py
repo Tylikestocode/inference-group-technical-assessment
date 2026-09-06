@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -16,6 +18,7 @@ def test_settings_have_local_development_defaults(
         "BANK_OPS_GENERATION_MAX_TOKENS",
         "BANK_OPS_GENERATION_SEED",
         "BANK_OPS_EMBEDDING_MODEL",
+        "BANK_OPS_PROCEDURE_INDEX_DIR",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -29,6 +32,7 @@ def test_settings_have_local_development_defaults(
     assert settings.generation_max_tokens == 160
     assert settings.generation_seed == 42
     assert settings.embedding_model == "BAAI/bge-small-en-v1.5"
+    assert settings.procedure_index_dir == Path("var/retrieval")
 
 
 def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -40,6 +44,7 @@ def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("BANK_OPS_GENERATION_MAX_TOKENS", "80")
     monkeypatch.setenv("BANK_OPS_GENERATION_SEED", "11")
     monkeypatch.setenv("BANK_OPS_EMBEDDING_MODEL", "local-embedding-model")
+    monkeypatch.setenv("BANK_OPS_PROCEDURE_INDEX_DIR", "/tmp/procedure-index")
 
     settings = Settings(_env_file=None)
 
@@ -51,6 +56,7 @@ def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.generation_max_tokens == 80
     assert settings.generation_seed == 11
     assert settings.embedding_model == "local-embedding-model"
+    assert settings.procedure_index_dir == Path("/tmp/procedure-index")
 
 
 @pytest.mark.parametrize(

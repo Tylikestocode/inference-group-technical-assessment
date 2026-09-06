@@ -1,5 +1,6 @@
 """Validated runtime configuration for the application."""
 
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import AnyHttpUrl, Field
@@ -32,3 +33,4 @@ class Settings(BaseSettings):
     generation_max_tokens: MaxGenerationTokens = 160
     generation_seed: GenerationSeed = 42
     embedding_model: ModelName = "BAAI/bge-small-en-v1.5"
+    procedure_index_dir: Path = Path("var/retrieval")

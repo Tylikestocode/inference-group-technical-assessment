@@ -1,6 +1,6 @@
 # Retrieval Task 002: Build and query the FAISS index
 
-- Status: Planned
+- Status: Done
 - Slice: 2 - Complete TXN-0212 investigation
 - Size: Medium
 - Depends on: Retrieval Task 001
