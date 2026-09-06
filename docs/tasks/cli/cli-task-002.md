@@ -1,6 +1,6 @@
 # CLI Task 002: Display the complete investigation
 
-- Status: Planned
+- Status: Done
 - Slice: 2 - Complete TXN-0212 investigation
 - Size: Small
 - Depends on: CLI Task 001, Agent Task 002

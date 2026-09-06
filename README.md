@@ -47,6 +47,30 @@ Questions must contain exactly one case-sensitive transaction ID in the form
 `TXN-0000`. Invalid questions are rejected before any API, retriever, or model
 is initialized.
 
+The investigation is displayed as a concise advisor-facing summary. All data in
+the prototype is fictional assessment data. A successful `TXN-0212` run has the
+following shape (the explanation and trace ID are generated at runtime):
+
+```text
+=== Fictional assessment data ===
+Transaction: TXN-0212
+Status: held
+Hold reason: Beneficiary details do not match the payment instruction.
+Outcome: escalation required
+
+Relevant procedure:
+  PROC-003 — Beneficiary Verification (version 1.0)
+  Section: Beneficiary details do not match the payment instruction
+
+Explanation: The transaction is held because the beneficiary details do not match the payment instruction.
+Next action: Compare the available beneficiary details with the original payment instruction, keep the transaction held, and refer any unresolved mismatch to Fictional Payments Operations.
+Human review required: Yes
+Escalation destination: Fictional Payments Operations
+Warnings:
+  - This agent is advisory and cannot release, approve, reject, edit, or bypass the transaction.
+Trace ID: 12345678-1234-5678-1234-567812345678
+```
+
 Runtime configuration can be supplied through a `.env` file or environment
 variables. Copy `.env.example` to see the available `BANK_OPS_*` settings and
 their local-development values.
