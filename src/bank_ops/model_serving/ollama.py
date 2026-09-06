@@ -6,11 +6,15 @@ import json
 from typing import Final
 
 import httpx
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from bank_ops.model_serving.contracts import (
+    ExplanationGenerationResult,
     ExplanationRequest,
     GeneratedExplanation,
+    InvalidModelResponse,
+    ModelTimedOut,
+    ModelUnavailable,
 )
 
 _SYSTEM_PROMPT: Final = """\
@@ -55,33 +59,44 @@ class OllamaExplanationGenerator:
             "seed": seed,
         }
 
-    def generate(self, request: ExplanationRequest) -> GeneratedExplanation:
+    def generate(self, request: ExplanationRequest) -> ExplanationGenerationResult:
         """Send approved context to Ollama and validate its structured answer."""
 
-        response = self._client.post(
-            "/api/chat",
-            json={
-                "model": self._model,
-                "messages": [
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": json.dumps(
-                            self._prompt_context(request),
-                            ensure_ascii=False,
-                            separators=(",", ":"),
-                        ),
-                    },
-                ],
-                "format": GeneratedExplanation.model_json_schema(),
-                "stream": False,
-                "think": False,
-                "options": self._generation_options,
-            },
-        )
-        response.raise_for_status()
-        chat_response = _OllamaChatResponse.model_validate(response.json())
-        return GeneratedExplanation.model_validate_json(chat_response.message.content)
+        try:
+            response = self._client.post(
+                "/api/chat",
+                json={
+                    "model": self._model,
+                    "messages": [
+                        {"role": "system", "content": _SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": json.dumps(
+                                self._prompt_context(request),
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
+                        },
+                    ],
+                    "format": GeneratedExplanation.model_json_schema(),
+                    "stream": False,
+                    "think": False,
+                    "options": self._generation_options,
+                },
+            )
+            response.raise_for_status()
+        except httpx.TimeoutException:
+            return ModelTimedOut()
+        except (httpx.RequestError, httpx.HTTPStatusError):
+            return ModelUnavailable()
+
+        try:
+            chat_response = _OllamaChatResponse.model_validate(response.json())
+            return GeneratedExplanation.model_validate_json(
+                chat_response.message.content
+            )
+        except (json.JSONDecodeError, UnicodeDecodeError, ValidationError):
+            return InvalidModelResponse()
 
     @staticmethod
     def _prompt_context(request: ExplanationRequest) -> dict[str, object]:

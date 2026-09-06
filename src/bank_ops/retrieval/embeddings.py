@@ -14,6 +14,10 @@ BGE_QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages
 class EmbeddingProvider(Protocol):
     """Application-owned boundary for document and query embeddings."""
 
+    @property
+    def model_name(self) -> str:
+        """Return the stable model identifier used to create embeddings."""
+
     def embed_documents(self, texts: Sequence[str]) -> NDArray[np.float32]:
         """Embed document passages as one row per supplied text."""
 
@@ -27,7 +31,14 @@ class HuggingFaceBgeEmbedder:
     def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5") -> None:
         from sentence_transformers import SentenceTransformer
 
+        self._model_name = model_name
         self._model: Any = SentenceTransformer(model_name)
+
+    @property
+    def model_name(self) -> str:
+        """Return the Hugging Face model identifier used by this adapter."""
+
+        return self._model_name
 
     def embed_documents(self, texts: Sequence[str]) -> NDArray[np.float32]:
         return self._encode(list(texts))

@@ -38,9 +38,16 @@ def test_factory_maps_shared_settings_to_the_ollama_adapter(
     result = factory.create_ollama_explanation_generator(settings)
 
     assert result is fake_generator
-    assert captured["client"] == {
-        "base_url": "http://ollama.internal:11434/",
-        "timeout": 33.0,
+    client_options = captured["client"]
+    assert isinstance(client_options, dict)
+    assert client_options["base_url"] == "http://ollama.internal:11434/"
+    timeout = client_options["timeout"]
+    assert isinstance(timeout, httpx.Timeout)
+    assert timeout.as_dict() == {
+        "connect": 33.0,
+        "read": 33.0,
+        "write": 33.0,
+        "pool": 33.0,
     }
     assert captured["generator"] == {
         "client": fake_client,

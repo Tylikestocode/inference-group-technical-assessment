@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 NonEmptyText = Annotated[str, Field(min_length=1)]
+RelevanceThreshold = Annotated[float, Field(ge=0, le=1)]
 
 
 class RetrievalModel(BaseModel):
@@ -40,8 +42,32 @@ class ProcedureSearchResult(ProcedureChunk):
     relevance_score: float
 
 
+class RetrievalErrorCode(StrEnum):
+    """Stable error codes returned by the retrieval boundary."""
+
+    NO_RELEVANT_PROCEDURE = "no_relevant_procedure"
+
+
+class NoRelevantProcedureResult(RetrievalModel):
+    """Specific result returned when no procedure clears the safety threshold."""
+
+    error: Literal[RetrievalErrorCode.NO_RELEVANT_PROCEDURE] = (
+        RetrievalErrorCode.NO_RELEVANT_PROCEDURE
+    )
+    message: Literal[
+        "No procedure met the minimum relevance score. Escalate for human review."
+    ] = "No procedure met the minimum relevance score. Escalate for human review."
+    minimum_relevance_score: RelevanceThreshold
+    highest_relevance_score: float | None
+
+
+type ProcedureSearchOutcome = list[ProcedureSearchResult] | NoRelevantProcedureResult
+
+
 class ProcedureIndexManifest(RetrievalModel):
     """Ordered chunk details whose positions correspond to FAISS row IDs."""
 
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
+    embedding_model: NonEmptyText
+    source_fingerprint: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
     chunks: tuple[ProcedureChunk, ...]

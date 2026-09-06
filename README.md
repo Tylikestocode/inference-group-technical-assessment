@@ -111,6 +111,30 @@ The first build downloads `BAAI/bge-small-en-v1.5`. Later builds reuse the
 local Hugging Face cache. The generated FAISS index and its citation metadata
 are written to `var/retrieval/` by default; set
 `BANK_OPS_PROCEDURE_INDEX_DIR` to use another application-local directory.
+Search results must meet `BANK_OPS_MINIMUM_RELEVANCE_SCORE`, which defaults to
+`0.6`. If no result meets that threshold, retrieval returns a specific
+no-relevant-procedure result so the investigation can be sent for human review
+without presenting a weak match as policy guidance.
+
+The citation manifest records its embedding model and a SHA-256 fingerprint of
+the exact source documents. A missing index, a different configured embedding
+model, or changed procedure source causes loading to fail with an instruction
+to rebuild the index:
+
+```sh
+uv run bank-ops build-index
+```
+
+To build inside Docker Compose and persist the artifacts in the named
+`procedure_index_data` volume, run:
+
+```sh
+docker compose --profile tools build procedure-index
+docker compose --profile tools run --rm procedure-index
+```
+
+The index remains in the volume after `docker compose down`. Running
+`docker compose down -v` removes it and requires another build.
 
 Run the deterministic retrieval tests without downloading a model:
 
@@ -118,8 +142,8 @@ Run the deterministic retrieval tests without downloading a model:
 uv run pytest tests/retrieval
 ```
 
-To exercise the real embedding model and confirm that the `TXN-0212` hold
-reason returns the Beneficiary Verification procedure first, run:
+To exercise the real embedding model, check all four expected procedure
+queries, and confirm that an unrelated query is rejected, run:
 
 ```sh
 RUN_RETRIEVAL_INTEGRATION=1 uv run pytest -m retrieval_integration
@@ -169,9 +193,9 @@ Run the setup script from the repository root:
 ./scripts/setup-model.sh
 ```
 
-The script starts Ollama, waits for it to accept connections, and downloads
-`qwen3.5:9b`. It is safe to run the command again; Ollama reuses the downloaded
-model data.
+The script starts Ollama, waits for Docker Compose to report it healthy, and
+downloads `qwen3.5:9b`. It is safe to run the command again; Ollama reuses the
+downloaded model data.
 
 Run a live smoke test:
 
@@ -200,15 +224,52 @@ at `http://localhost:11434`.
 Start or stop the service independently:
 
 ```sh
-docker compose up -d ollama
+docker compose up -d --wait ollama
 docker compose stop ollama
 ```
 
-Inspect its state and logs:
+Inspect its health and logs:
 
 ```sh
 docker compose ps
 docker compose logs -f ollama
+```
+
+## Demonstrate the model-offline fallback
+
+First start the transaction API in a separate terminal:
+
+```sh
+uv run uvicorn bank_ops.transactions.api:app --host 127.0.0.1 --port 8000
+```
+
+Then build the procedure index and make sure the normal local model setup has
+completed:
+
+```sh
+uv run bank-ops build-index
+./scripts/setup-model.sh
+```
+
+Docker Compose should report Ollama as healthy. Stop only the model service,
+then run the same investigation command:
+
+```sh
+docker compose ps ollama
+docker compose stop ollama
+uv run bank-ops investigate "Why is TXN-0212 held?"
+```
+
+The investigation still returns the verified transaction, cited procedure,
+predetermined next action, and human-review decision. Its explanation uses
+deterministic wording and its warnings state that the model explanation was
+unavailable. No source changes or live model are required for this route.
+
+Restart Ollama and wait for readiness before continuing normal demonstrations:
+
+```sh
+docker compose up -d --wait ollama
+./scripts/smoke-test-model.sh
 ```
 
 Restart Ollama and confirm that the model remains installed:
