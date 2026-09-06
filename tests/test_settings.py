@@ -20,6 +20,7 @@ def test_settings_have_local_development_defaults(
         "BANK_OPS_GENERATION_SEED",
         "BANK_OPS_EMBEDDING_MODEL",
         "BANK_OPS_PROCEDURE_INDEX_DIR",
+        "BANK_OPS_MINIMUM_RELEVANCE_SCORE",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -35,6 +36,7 @@ def test_settings_have_local_development_defaults(
     assert settings.generation_seed == 42
     assert settings.embedding_model == "BAAI/bge-small-en-v1.5"
     assert settings.procedure_index_dir == Path("var/retrieval")
+    assert settings.minimum_relevance_score == 0.6
 
 
 def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -48,6 +50,7 @@ def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("BANK_OPS_GENERATION_SEED", "11")
     monkeypatch.setenv("BANK_OPS_EMBEDDING_MODEL", "local-embedding-model")
     monkeypatch.setenv("BANK_OPS_PROCEDURE_INDEX_DIR", "/tmp/procedure-index")
+    monkeypatch.setenv("BANK_OPS_MINIMUM_RELEVANCE_SCORE", "0.72")
 
     settings = Settings(_env_file=None)
 
@@ -61,6 +64,7 @@ def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.generation_seed == 11
     assert settings.embedding_model == "local-embedding-model"
     assert settings.procedure_index_dir == Path("/tmp/procedure-index")
+    assert settings.minimum_relevance_score == 0.72
 
 
 @pytest.mark.parametrize(
@@ -75,6 +79,8 @@ def test_settings_load_environment_overrides(monkeypatch: pytest.MonkeyPatch) ->
         ("BANK_OPS_GENERATION_MAX_TOKENS", "0"),
         ("BANK_OPS_GENERATION_SEED", "-1"),
         ("BANK_OPS_EMBEDDING_MODEL", "   "),
+        ("BANK_OPS_MINIMUM_RELEVANCE_SCORE", "-0.01"),
+        ("BANK_OPS_MINIMUM_RELEVANCE_SCORE", "1.01"),
     ],
 )
 def test_settings_reject_invalid_values(

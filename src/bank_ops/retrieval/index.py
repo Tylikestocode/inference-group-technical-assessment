@@ -12,16 +12,20 @@ import faiss
 import numpy as np
 from pydantic import ValidationError
 
-from bank_ops.retrieval.corpus import load_procedure_chunks
+from bank_ops.retrieval.corpus import ProcedureCorpusError, load_procedure_corpus
 from bank_ops.retrieval.embeddings import EmbeddingProvider
 from bank_ops.retrieval.models import (
+    NoRelevantProcedureResult,
     ProcedureChunk,
     ProcedureIndexManifest,
+    ProcedureSearchOutcome,
     ProcedureSearchResult,
 )
 
 INDEX_FILENAME = "procedures.faiss"
 MANIFEST_FILENAME = "procedure-chunks.json"
+DEFAULT_MINIMUM_RELEVANCE_SCORE = 0.6
+_RECOVERY_INSTRUCTION = "Run `bank-ops build-index` to rebuild it."
 
 
 class ProcedureIndexError(RuntimeError):
@@ -31,8 +35,8 @@ class ProcedureIndexError(RuntimeError):
 class ProcedureRetriever(Protocol):
     """Application-owned interface for ranked procedure retrieval."""
 
-    def search(self, query: str, limit: int = 3) -> list[ProcedureSearchResult]:
-        """Return the most relevant procedure sections in descending order."""
+    def search(self, query: str, limit: int = 3) -> ProcedureSearchOutcome:
+        """Return relevant procedure sections or an explicit no-match result."""
 
 
 def build_procedure_index(
@@ -42,8 +46,8 @@ def build_procedure_index(
 ) -> int:
     """Build and atomically replace a local index and its chunk metadata."""
 
-    chunks = load_procedure_chunks(corpus_directory)
-    vectors = _document_vectors(embedding_provider, chunks)
+    corpus = load_procedure_corpus(corpus_directory)
+    vectors = _document_vectors(embedding_provider, corpus.chunks)
 
     index = faiss.IndexFlatIP(vectors.shape[1])
     index.add(vectors)
@@ -52,7 +56,11 @@ def build_procedure_index(
     output.mkdir(parents=True, exist_ok=True)
     index_path = output / INDEX_FILENAME
     manifest_path = output / MANIFEST_FILENAME
-    manifest = ProcedureIndexManifest(chunks=chunks)
+    manifest = ProcedureIndexManifest(
+        embedding_model=embedding_provider.model_name,
+        source_fingerprint=corpus.source_fingerprint,
+        chunks=corpus.chunks,
+    )
 
     temporary_index = _temporary_path(output, INDEX_FILENAME)
     temporary_manifest = _temporary_path(output, MANIFEST_FILENAME)
@@ -69,7 +77,7 @@ def build_procedure_index(
         temporary_index.unlink(missing_ok=True)
         temporary_manifest.unlink(missing_ok=True)
 
-    return len(chunks)
+    return len(corpus.chunks)
 
 
 class FaissProcedureRetriever:
@@ -80,53 +88,111 @@ class FaissProcedureRetriever:
         index: faiss.Index,
         chunks: tuple[ProcedureChunk, ...],
         embedding_provider: EmbeddingProvider,
+        *,
+        minimum_relevance_score: float = DEFAULT_MINIMUM_RELEVANCE_SCORE,
     ) -> None:
+        if (
+            not np.isfinite(minimum_relevance_score)
+            or minimum_relevance_score < 0
+            or minimum_relevance_score > 1
+        ):
+            raise ValueError("minimum_relevance_score must be between 0 and 1")
         if index.ntotal != len(chunks):
             raise ProcedureIndexError(
-                "Procedure index row count does not match its chunk metadata"
+                "Procedure index row count does not match its chunk metadata. "
+                f"{_RECOVERY_INSTRUCTION}"
             )
         self._index = index
         self._chunks = chunks
         self._embedding_provider = embedding_provider
+        self._minimum_relevance_score = minimum_relevance_score
 
     @classmethod
     def load(
         cls,
         embedding_provider: EmbeddingProvider,
         index_directory: str | Path,
+        *,
+        minimum_relevance_score: float = DEFAULT_MINIMUM_RELEVANCE_SCORE,
+        corpus_directory: str | Path | None = None,
     ) -> FaissProcedureRetriever:
-        """Load the index and ordered chunk metadata from one directory."""
+        """Load an index only when its model and source corpus remain compatible."""
 
         directory = Path(index_directory)
         index_path = directory / INDEX_FILENAME
         manifest_path = directory / MANIFEST_FILENAME
+        missing_artifacts = [
+            path.name for path in (index_path, manifest_path) if not path.is_file()
+        ]
+        if missing_artifacts:
+            missing = ", ".join(missing_artifacts)
+            raise ProcedureIndexError(
+                f"Procedure index is missing required artifacts in {directory}: "
+                f"{missing}. {_RECOVERY_INSTRUCTION}"
+            )
+
         try:
-            index = faiss.read_index(str(index_path))
             manifest = ProcedureIndexManifest.model_validate_json(
                 manifest_path.read_text(encoding="utf-8")
             )
-        except (OSError, RuntimeError, ValidationError, json.JSONDecodeError) as error:
+        except (OSError, ValidationError, json.JSONDecodeError) as error:
             raise ProcedureIndexError(
-                f"Unable to load procedure index from {directory}: {error}"
+                "Procedure index metadata is invalid or incompatible: "
+                f"{error}. {_RECOVERY_INSTRUCTION}"
             ) from error
-        return cls(index, manifest.chunks, embedding_provider)
 
-    def search(self, query: str, limit: int = 3) -> list[ProcedureSearchResult]:
-        """Return cosine-ranked procedure sections for a non-empty query."""
+        if manifest.embedding_model != embedding_provider.model_name:
+            raise ProcedureIndexError(
+                "Procedure index is incompatible with the configured embedding "
+                f"model: built with {manifest.embedding_model!r}, configured with "
+                f"{embedding_provider.model_name!r}. {_RECOVERY_INSTRUCTION}"
+            )
+
+        try:
+            corpus = load_procedure_corpus(corpus_directory)
+        except ProcedureCorpusError as error:
+            raise ProcedureIndexError(
+                "Unable to validate the procedure index against its source documents: "
+                f"{error}. Restore the procedure corpus, then {_RECOVERY_INSTRUCTION}"
+            ) from error
+        if manifest.source_fingerprint != corpus.source_fingerprint:
+            raise ProcedureIndexError(
+                "Procedure index is stale because the source documents have changed. "
+                f"{_RECOVERY_INSTRUCTION}"
+            )
+
+        try:
+            index = faiss.read_index(str(index_path))
+        except (OSError, RuntimeError) as error:
+            raise ProcedureIndexError(
+                f"Unable to read the procedure index from {directory}: {error}. "
+                f"{_RECOVERY_INSTRUCTION}"
+            ) from error
+
+        return cls(
+            index,
+            manifest.chunks,
+            embedding_provider,
+            minimum_relevance_score=minimum_relevance_score,
+        )
+
+    def search(self, query: str, limit: int = 3) -> ProcedureSearchOutcome:
+        """Return cosine-ranked sections that clear the configured safety threshold."""
 
         if not query.strip():
             raise ValueError("query must not be empty")
         if limit < 1:
             raise ValueError("limit must be at least 1")
         if self._index.ntotal == 0:
-            return []
+            return self._no_relevant_procedure(None)
 
         vector = np.asarray(
             self._embedding_provider.embed_query(query), dtype=np.float32
         )
         if vector.ndim != 1 or vector.shape[0] != self._index.d:
             raise ProcedureIndexError(
-                "Query embedding dimension does not match the procedure index"
+                "Query embedding dimension does not match the procedure index. "
+                f"{_RECOVERY_INSTRUCTION}"
             )
         if not np.isfinite(vector).all() or np.linalg.norm(vector) == 0:
             raise ProcedureIndexError("Query embedding must contain finite values")
@@ -136,13 +202,25 @@ class FaissProcedureRetriever:
         result_count = min(limit, self._index.ntotal)
         scores, row_ids = self._index.search(query_vector, result_count)
 
-        return [
+        results = [
             ProcedureSearchResult(
                 **self._chunks[int(row_id)].model_dump(),
                 relevance_score=float(score),
             )
             for score, row_id in zip(scores[0], row_ids[0], strict=True)
+            if score >= self._minimum_relevance_score
         ]
+        if results:
+            return results
+        return self._no_relevant_procedure(float(scores[0][0]))
+
+    def _no_relevant_procedure(
+        self, highest_relevance_score: float | None
+    ) -> NoRelevantProcedureResult:
+        return NoRelevantProcedureResult(
+            minimum_relevance_score=self._minimum_relevance_score,
+            highest_relevance_score=highest_relevance_score,
+        )
 
 
 def _document_vectors(

@@ -111,6 +111,30 @@ The first build downloads `BAAI/bge-small-en-v1.5`. Later builds reuse the
 local Hugging Face cache. The generated FAISS index and its citation metadata
 are written to `var/retrieval/` by default; set
 `BANK_OPS_PROCEDURE_INDEX_DIR` to use another application-local directory.
+Search results must meet `BANK_OPS_MINIMUM_RELEVANCE_SCORE`, which defaults to
+`0.6`. If no result meets that threshold, retrieval returns a specific
+no-relevant-procedure result so the investigation can be sent for human review
+without presenting a weak match as policy guidance.
+
+The citation manifest records its embedding model and a SHA-256 fingerprint of
+the exact source documents. A missing index, a different configured embedding
+model, or changed procedure source causes loading to fail with an instruction
+to rebuild the index:
+
+```sh
+uv run bank-ops build-index
+```
+
+To build inside Docker Compose and persist the artifacts in the named
+`procedure_index_data` volume, run:
+
+```sh
+docker compose --profile tools build procedure-index
+docker compose --profile tools run --rm procedure-index
+```
+
+The index remains in the volume after `docker compose down`. Running
+`docker compose down -v` removes it and requires another build.
 
 Run the deterministic retrieval tests without downloading a model:
 
@@ -118,8 +142,8 @@ Run the deterministic retrieval tests without downloading a model:
 uv run pytest tests/retrieval
 ```
 
-To exercise the real embedding model and confirm that the `TXN-0212` hold
-reason returns the Beneficiary Verification procedure first, run:
+To exercise the real embedding model, check all four expected procedure
+queries, and confirm that an unrelated query is rejected, run:
 
 ```sh
 RUN_RETRIEVAL_INTEGRATION=1 uv run pytest -m retrieval_integration
