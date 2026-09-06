@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 from uuid import UUID, uuid4
 
 from langgraph.graph import END, START, StateGraph
@@ -15,6 +15,7 @@ from bank_ops.investigations import (
     ProcedureReference,
 )
 from bank_ops.model_serving import (
+    ExplanationGenerationFailure,
     ExplanationGenerator,
     ExplanationRequest,
     GeneratedExplanation,
@@ -37,6 +38,9 @@ from bank_ops.transactions import (
 )
 
 DEFAULT_RETRIEVAL_LIMIT = 3
+MODEL_FALLBACK_WARNING = (
+    "The model explanation was unavailable, so deterministic wording was used."
+)
 
 
 class InvestigationWorkflowError(RuntimeError):
@@ -53,6 +57,7 @@ class InvestigationState(TypedDict, total=False):
     procedure_results: tuple[ProcedureSearchResult, ...]
     selected_procedure: ProcedureSearchResult
     decision: InvestigationDecision
+    generation_failure: ExplanationGenerationFailure
     generated_explanation: GeneratedExplanation
     response: InvestigationResponse
 
@@ -85,6 +90,7 @@ class InvestigationWorkflow:
         "retrieve_procedures",
         "apply_decision_rules",
         "generate_explanation",
+        "build_model_fallback",
         "assemble_and_validate_response",
     )
 
@@ -131,6 +137,7 @@ class InvestigationWorkflow:
         graph.add_node("retrieve_procedures", self._retrieve_procedures)
         graph.add_node("apply_decision_rules", self._apply_decision_rules)
         graph.add_node("generate_explanation", self._generate_explanation)
+        graph.add_node("build_model_fallback", self._build_model_fallback)
         graph.add_node(
             "assemble_and_validate_response",
             self._assemble_and_validate_response,
@@ -139,7 +146,15 @@ class InvestigationWorkflow:
         graph.add_edge("lookup_transaction", "retrieve_procedures")
         graph.add_edge("retrieve_procedures", "apply_decision_rules")
         graph.add_edge("apply_decision_rules", "generate_explanation")
-        graph.add_edge("generate_explanation", "assemble_and_validate_response")
+        graph.add_conditional_edges(
+            "generate_explanation",
+            self._route_after_generation,
+            {
+                "success": "assemble_and_validate_response",
+                "fallback": "build_model_fallback",
+            },
+        )
+        graph.add_edge("build_model_fallback", "assemble_and_validate_response")
         graph.add_edge("assemble_and_validate_response", END)
         return graph.compile()
 
@@ -187,13 +202,36 @@ class InvestigationWorkflow:
                 next_action=state["decision"].recommended_next_action.value,
             )
         )
-        return {"generated_explanation": generated}
+        if isinstance(generated, GeneratedExplanation):
+            return {"generated_explanation": generated}
+        return {"generation_failure": generated}
+
+    @staticmethod
+    def _route_after_generation(
+        state: InvestigationState,
+    ) -> Literal["success", "fallback"]:
+        if "generation_failure" in state:
+            return "fallback"
+        return "success"
+
+    @staticmethod
+    def _build_model_fallback(state: InvestigationState) -> InvestigationState:
+        transaction = state["transaction"]
+        explanation = (
+            f"{transaction.transaction_id} has verified status "
+            f"{transaction.status.value}. Model-generated wording is unavailable; "
+            "use the cited procedure and predetermined next action shown below."
+        )
+        return {"generated_explanation": GeneratedExplanation(explanation=explanation)}
 
     @staticmethod
     def _assemble_and_validate_response(
         state: InvestigationState,
     ) -> InvestigationState:
         decision = state["decision"]
+        warnings = decision.warnings
+        if "generation_failure" in state:
+            warnings += (MODEL_FALLBACK_WARNING,)
         return {
             "response": InvestigationResponse(
                 trace_id=state["trace_id"],
@@ -206,7 +244,7 @@ class InvestigationWorkflow:
                 recommended_next_action=decision.recommended_next_action,
                 human_review_required=decision.human_review_required,
                 escalation_destination=decision.escalation_destination,
-                warnings=decision.warnings,
+                warnings=warnings,
             )
         }
 

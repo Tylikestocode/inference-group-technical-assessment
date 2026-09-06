@@ -14,7 +14,7 @@ def create_ollama_explanation_generator(settings: Settings) -> ExplanationGenera
 
     client = httpx.Client(
         base_url=str(settings.ollama_url),
-        timeout=settings.generation_timeout_seconds,
+        timeout=httpx.Timeout(settings.generation_timeout_seconds),
     )
     return OllamaExplanationGenerator(
         client=client,
